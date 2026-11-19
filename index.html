@@ -1,0 +1,1961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>植物种植花期管理库</title>
+	<!-- 静态资源全部本地化，内网/断网环境可正常使用 -->
+	<script src="/static/vendor/tailwind.js"></script>
+	<link href="/static/vendor/font-awesome.min.css" rel="stylesheet">
+	<script src="/static/vendor/axios.min.js"></script>
+	<script>
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						plant: {
+							primary: '#2E7D32',
+							secondary: '#81C784',
+							light: '#E8F5E9',
+							dark: '#1B5E20'
+						}
+					},
+					fontFamily: {
+						sans: ['Inter', 'system-ui', 'sans-serif'],
+					},
+				}
+			}
+		}
+	</script>
+	<style type="text/tailwindcss">
+		@layer utilities {
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(46, 125, 50, 0.12);
+            }
+            .scrollbar-thin::-webkit-scrollbar {
+                width: 6px;
+            }
+            .scrollbar-thin::-webkit-scrollbar-thumb {
+                background-color: #81C784;
+                border-radius: 3px;
+            }
+            .bg-gradient-plant {
+                background: linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%);
+            }
+        }
+	</style>
+</head>
+
+<body class="bg-plant-light min-h-screen">
+	<!-- 登录/注册遮罩层 -->
+	<div id="authOverlay" class="fixed inset-0 bg-gray-900/70 z-[100] flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-md p-6 card-shadow">
+			<div id="loginFormWrap" class="hidden">
+				<h2 class="text-2xl font-bold text-gray-800 mb-5 flex items-center gap-2">
+					<i class="fa fa-leaf text-plant-primary"></i>系统登录
+				</h2>
+				<div class="space-y-4">
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+						<input id="loginUsername" type="text" autocomplete="username"
+							class="w-full border rounded-lg px-3 py-2.5">
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+						<input id="loginPwd" type="password" autocomplete="current-password"
+							class="w-full border rounded-lg px-3 py-2.5"
+							onkeydown="if(event.key==='Enter') doLogin()">
+					</div>
+					<div id="loginErrMsg" class="text-red-500 text-sm hidden"></div>
+					<button onclick="doLogin()"
+						class="w-full bg-plant-primary text-white py-2.5 rounded-lg hover:bg-plant-dark">登录</button>
+				</div>
+			</div>
+			<div id="registerFormWrap" class="hidden">
+				<h2 class="text-2xl font-bold text-gray-800 mb-5 flex items-center gap-2">
+					<i class="fa fa-leaf text-plant-primary"></i>初始化注册账号
+				</h2>
+				<div class="space-y-4">
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">设置用户名</label>
+						<input id="regUsername" type="text" autocomplete="username"
+							class="w-full border rounded-lg px-3 py-2.5">
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">设置密码（至少4位）</label>
+						<input id="regPwd1" type="password" autocomplete="new-password"
+							class="w-full border rounded-lg px-3 py-2.5">
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">再次输入密码</label>
+						<input id="regPwd2" type="password" autocomplete="new-password"
+							class="w-full border rounded-lg px-3 py-2.5"
+							onkeydown="if(event.key==='Enter') doRegister()">
+					</div>
+					<div id="regErrMsg" class="text-red-500 text-sm hidden"></div>
+					<button onclick="doRegister()"
+						class="w-full bg-plant-primary text-white py-2.5 rounded-lg hover:bg-plant-dark">完成注册</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div id="app" class="max-w-7xl mx-auto px-4 py-6 hidden">
+		<div id="mainView">
+		<!-- 头部 -->
+		<header class="bg-gradient-plant rounded-2xl p-6 mb-8 text-white card-shadow">
+			<div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+				<div>
+					<h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold flex items-center gap-2">
+						<i class="fa fa-leaf"></i>植物种植花期资料库
+					</h1>
+					<p class="opacity-90 mt-1">本地 SQLite 存储；新增同名植物复用库内 ID，重名会提示处理</p>
+				</div>
+				<div class="flex items-center gap-2 shrink-0 self-start md:self-center">
+					<button id="aiChatBtn" type="button" onclick="openAiChat()"
+						class="bg-white/15 hover:bg-white/25 active:bg-white/30 border border-white/30 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-300 flex items-center gap-2 w-fit focus:outline-none focus:ring-2 focus:ring-white/70">
+						<i class="fa fa-comments"></i>AI 问答
+					</button>
+					<div class="relative">
+						<button id="settingsBtn" type="button" onclick="toggleSettings(event)"
+							aria-haspopup="menu" aria-expanded="false" aria-controls="settingsMenu"
+							class="bg-white/15 hover:bg-white/25 active:bg-white/30 border border-white/30 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-300 flex items-center gap-2 w-fit focus:outline-none focus:ring-2 focus:ring-white/70">
+							<i class="fa fa-cog"></i>设置
+							<i class="fa fa-angle-down text-xs transition-transform duration-200" id="settingsCaret"></i>
+						</button>
+						<div id="settingsMenu" role="menu" aria-labelledby="settingsBtn"
+							class="hidden absolute left-0 right-auto md:left-auto md:right-0 top-full mt-2 w-60 max-w-[calc(100vw-2rem)] origin-top-left md:origin-top-right bg-white text-gray-700 rounded-2xl shadow-2xl ring-1 ring-black/5 p-2 z-40">
+							<p class="px-3 pt-1 pb-2 text-xs font-medium text-gray-400">常用操作</p>
+							<button role="menuitem" onclick="closeSettings(); openPlantModal()"
+								class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm hover:bg-plant-light hover:text-plant-dark transition">
+								<i class="fa fa-plus w-4 text-center text-plant-primary"></i>🌱 新增植物
+							</button>
+							<button role="menuitem" onclick="closeSettings(); openDiseaseLib()"
+								class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm hover:bg-plant-light hover:text-plant-dark transition">
+								<i class="fa fa-medkit w-4 text-center text-plant-primary"></i>🦠 病害库
+							</button>
+							<div class="my-1 border-t border-gray-100"></div>
+							<button role="menuitem" onclick="closeSettings(); toggleView()"
+								class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm hover:bg-plant-light hover:text-plant-dark transition">
+								<i class="fa fa-leaf w-4 text-center text-plant-primary"></i><span id="viewMenuLabel">进入植物库</span>
+							</button>
+							<button role="menuitem" onclick="closeSettings(); openAiConfig()"
+								class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm hover:bg-plant-light hover:text-plant-dark transition">
+								<i class="fa fa-key w-4 text-center text-plant-primary"></i>⚙️ AI 设置
+							</button>
+							<button role="menuitem" onclick="closeSettings(); doLogout()"
+								class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm text-red-600 hover:bg-red-50 transition">
+								<i class="fa fa-sign-out w-4 text-center"></i>退出登录
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+			<!-- 搜索栏 + 视图提示 -->
+			<div class="mt-6 flex flex-col md:flex-row gap-3 items-start md:items-end">
+				<div class="relative flex-1 w-full">
+					<i class="fa fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+					<input type="text" id="searchInput" placeholder="搜索植物名称、地区..." oninput="renderCurrentView()"
+						class="w-full pl-11 pr-4 py-3 rounded-xl text-gray-800 outline-none focus:ring-2 focus:ring-plant-secondary">
+				</div>
+				<div class="flex gap-2 items-center text-white text-sm whitespace-nowrap">
+					<span id="currentViewLabel">▶ 当前：我的种植植物</span>
+				</div>
+			</div>
+		</header>
+
+		<!-- 本月待种植提醒（仅“我的种植植物”视图显示） -->
+		<section id="todoWrap" class="mb-8 bg-white rounded-2xl p-5 card-shadow">
+			<h2 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+				<i class="fa fa-calendar-check-o text-plant-primary"></i>本月待种植提醒
+				<span id="todoMonthTip" class="text-sm font-normal text-gray-500"></span>
+			</h2>
+			<div id="todoList" class="space-y-2"></div>
+			<div id="todoEmpty" class="text-gray-400 py-3 hidden">本月暂无需要种植的植物</div>
+		</section>
+
+		<!-- 卡片列表容器 -->
+		<div id="plantList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+
+		<!-- 空状态 -->
+		<div id="emptyTip" class="hidden py-20 text-center text-gray-500">
+			<i class="fa fa-seedling text-6xl mb-4 text-plant-secondary"></i>
+			<p id="emptyTipText" class="text-lg">暂无植物数据，点击🌱新增植物进行添加</p>
+		</div>
+		</div>
+
+		<!-- 整页：病害库管理 -->
+		<section id="diseasePage" class="hidden">
+			<div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+				<div>
+					<h1 class="text-3xl font-bold text-gray-800 flex items-center gap-2">
+						<i class="fa fa-medkit text-plant-primary"></i>病害库管理
+					</h1>
+					<p class="text-gray-500 mt-1">维护病害与虫害的症状、治理方法和预防措施，供植物记录引用。</p>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					<button onclick="openDiseaseForm()"
+						class="inline-flex items-center gap-2 px-4 py-2.5 bg-plant-primary text-white rounded-xl hover:bg-plant-dark transition w-fit">
+						<i class="fa fa-plus"></i>新增病害
+					</button>
+					<button onclick="closeDiseaseLib()"
+						class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-600 hover:text-plant-primary hover:border-plant-primary transition w-fit">
+						<i class="fa fa-arrow-left"></i>返回植物列表
+					</button>
+				</div>
+			</div>
+
+			<div class="bg-white rounded-2xl card-shadow p-6">
+				<h2 class="text-lg font-bold text-gray-800 mb-4">病害列表
+					<span id="diseaseCount" class="text-sm font-normal text-gray-400"></span>
+				</h2>
+				<div id="diseaseList" class="space-y-3"></div>
+				<div id="diseaseEmpty" class="text-gray-400 py-10 text-center hidden">病害库为空，点击右上角「新增病害」添加</div>
+			</div>
+		</section>
+	</div>
+
+	<!-- 弹窗：新增/编辑病害 -->
+	<div id="diseaseFormModal" class="fixed inset-0 bg-black/50 z-[70] hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto scrollbar-thin">
+			<div class="p-5 border-b flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
+				<h2 id="diseaseFormTitle" class="text-xl font-bold text-gray-800">新增病害</h2>
+				<button onclick="closeDiseaseForm()" class="text-gray-400 hover:text-gray-700 text-xl" aria-label="关闭">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div class="p-5 space-y-5">
+				<input type="hidden" id="diseaseEditId">
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">病害名称</label>
+					<input id="diseaseName" type="text" placeholder="必填，如：白粉病"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary">
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">症状 / 现象</label>
+					<textarea id="diseaseSymptom" rows="9" placeholder="描述发病部位、病斑形态、颜色、扩展方式和诱发条件等"
+						class="w-full border border-gray-300 rounded-lg px-4 py-3 leading-6 focus:outline-none focus:ring-2 focus:ring-plant-secondary resize-y min-h-[12rem]"></textarea>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">治理方法</label>
+					<textarea id="diseaseTreatment" rows="9" placeholder="写明药剂名称、浓度/稀释倍数、喷施部位、间隔和次数，以及修剪、换土等操作"
+						class="w-full border border-gray-300 rounded-lg px-4 py-3 leading-6 focus:outline-none focus:ring-2 focus:ring-plant-secondary resize-y min-h-[12rem]"></textarea>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">预防措施</label>
+					<textarea id="diseasePrevention" rows="4" placeholder="通风、光照、浇水、密度、轮作、土壤消毒等日常预防要点"
+						class="w-full border border-gray-300 rounded-lg px-4 py-3 leading-6 focus:outline-none focus:ring-2 focus:ring-plant-secondary resize-y min-h-[7rem]"></textarea>
+				</div>
+				<p class="text-xs text-gray-400">症状与治理方法支持大段文字，可拖动文本框右下角调整高度。</p>
+			</div>
+			<div class="p-5 border-t flex justify-end gap-3 sticky bottom-0 bg-white rounded-b-2xl">
+				<button onclick="closeDiseaseForm()"
+					class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition">取消</button>
+				<button onclick="saveDisease()"
+					class="px-5 py-2 bg-plant-primary text-white rounded-lg hover:bg-plant-dark transition">保存病害</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- 弹窗：网络图片选择 -->
+	<div id="imageSearchModal" class="fixed inset-0 bg-black/60 z-[80] hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+			<div class="p-5 border-b flex justify-between items-start gap-4">
+				<div class="min-w-0">
+					<h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+						<i class="fa fa-globe text-plant-primary"></i>网络图片
+					</h2>
+					<p class="text-sm text-gray-500 mt-1 truncate">按名称「<span id="imageSearchKeyword"
+							class="text-plant-primary font-medium"></span>」搜索，点击图片即选用</p>
+				</div>
+				<button onclick="closeImageSearch()" class="text-gray-400 hover:text-gray-700 text-xl shrink-0"
+					aria-label="关闭">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div class="p-5 overflow-y-auto scrollbar-thin flex-1">
+				<div id="imageSearchStatus" class="text-sm text-gray-500 mb-3">正在搜索网络图片...</div>
+				<div id="imageSearchGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3"></div>
+				<div id="imageSearchEmpty" class="hidden text-center py-16 text-gray-400">
+					<i class="fa fa-image text-5xl mb-3 text-gray-300"></i>
+					<p id="imageSearchEmptyText">没有找到相关图片，换个名称再试</p>
+				</div>
+			</div>
+			<div class="p-4 border-t flex justify-between items-center gap-3 bg-white">
+				<button onclick="loadMoreImageCandidates()" id="imageSearchMoreBtn"
+					class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed">
+					<i class="fa fa-refresh"></i> 换一批
+				</button>
+				<button onclick="closeImageSearch()"
+					class="px-5 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition">取消</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- 弹窗：免费 AI 额度用完 -->
+	<div id="aiQuotaModal" class="fixed inset-0 bg-black/60 z-[90] hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto scrollbar-thin">
+			<div class="p-5 border-b flex justify-between items-start gap-3">
+				<div>
+					<h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+						<i class="fa fa-exclamation-triangle text-amber-500"></i>免费 AI 额度已用完
+					</h2>
+					<p class="text-xs text-gray-500 mt-1">配置自己的 API Key 后可继续使用</p>
+				</div>
+				<button onclick="closeAiQuota()" class="text-gray-400 hover:text-gray-700 text-xl shrink-0" aria-label="关闭">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div class="p-5">
+				<p id="aiQuotaText" class="text-sm text-gray-600 leading-6"></p>
+				<div class="mt-4 bg-plant-light rounded-xl p-4 text-sm text-gray-700">
+					<p class="font-medium text-gray-800 mb-2">注册并配置 API Key（推荐 DeepSeek V4.1 Flash）</p>
+					<ol class="list-decimal ml-5 space-y-2 leading-6">
+						<li>打开
+							<a href="https://opencode.ai/console" target="_blank" rel="noopener"
+								class="text-plant-primary underline">OpenCode Console</a>
+							注册并创建 API Key。
+						</li>
+						<li class="break-words">API 地址填
+							<code class="bg-white px-1 rounded break-all">https://opencode.ai/inference/openai/v1</code>，
+							模型填 <code class="bg-white px-1 rounded break-all">deepseek-v4.1-flash</code>。</li>
+						<li>也可使用
+							<a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener"
+								class="text-plant-primary underline">DeepSeek 开放平台</a>
+							或任意 OpenAI 兼容服务的 Key。</li>
+						<li>回到「设置 → AI 设置」保存，之后 AI 问答和 AI 补齐都会使用你的 Key。</li>
+					</ol>
+				</div>
+				<p class="text-xs text-gray-400 mt-3">免费额度会按服务方规则自动恢复；配置 Key 后不再受免费额度限制。</p>
+			</div>
+			<div class="p-5 border-t flex flex-wrap justify-end gap-2 bg-white">
+				<a href="https://opencode.ai/console" target="_blank" rel="noopener"
+					class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition">
+					去注册
+				</a>
+				<button onclick="openAiConfigFromQuota()"
+					class="px-4 py-2 bg-plant-primary text-white rounded-lg hover:bg-plant-dark transition">
+					打开 AI 设置
+				</button>
+				<button onclick="closeAiQuota()"
+					class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition">知道了</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- 弹窗：AI 问答 -->
+	<div id="aiChatModal" class="fixed inset-0 bg-black/50 z-[85] hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-2xl h-[82vh] max-h-[760px] flex flex-col overflow-hidden">
+			<div class="p-4 border-b flex justify-between items-start gap-3 bg-white">
+				<div class="min-w-0">
+					<h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+						<i class="fa fa-comments text-plant-primary"></i>植物 AI 问答
+					</h2>
+					<p class="text-xs text-gray-500 mt-1">
+						仅回答植物相关问题 · <span id="aiChatProvider" class="text-plant-primary">免费 AI</span>
+					</p>
+				</div>
+				<button onclick="closeAiChat()" class="text-gray-400 hover:text-gray-700 text-xl shrink-0" aria-label="关闭">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div id="aiChatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50"></div>
+			<div class="p-4 border-t bg-white">
+				<div class="flex gap-2 items-end">
+					<textarea id="aiChatInput" rows="2" placeholder="描述你的植物问题，Enter 发送，Shift+Enter 换行"
+						class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm leading-6 resize-none focus:outline-none focus:ring-2 focus:ring-plant-secondary"></textarea>
+					<button id="aiChatSendBtn" onclick="sendAiChat()"
+						class="px-5 py-2.5 bg-plant-primary text-white rounded-xl hover:bg-plant-dark transition disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+						<i class="fa fa-paper-plane"></i> 发送
+					</button>
+				</div>
+				<p class="text-xs text-gray-400 mt-2">AI 回答仅供参考；仅讨论植物话题。可在「设置 → AI 设置」配置自己的 API Key。</p>
+			</div>
+		</div>
+	</div>
+
+	<!-- 弹窗：AI 设置 -->
+	<div id="aiConfigModal" class="fixed inset-0 bg-black/50 z-[85] hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto scrollbar-thin">
+			<div class="p-5 border-b flex justify-between items-center">
+				<h2 class="text-lg font-bold text-gray-800"><i class="fa fa-key text-plant-primary"></i> AI 设置</h2>
+				<button onclick="closeAiConfig()" class="text-gray-400 hover:text-gray-700 text-xl" aria-label="关闭">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div class="p-5 space-y-4">
+				<div id="aiConfigStatus"
+					class="text-sm rounded-xl px-4 py-3 bg-plant-light text-plant-dark">
+					当前使用免费 AI
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-1.5">API Key</label>
+					<input id="aiConfigKey" type="password" autocomplete="off" placeholder="sk-...（留空使用免费 AI）"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary">
+					<p class="text-xs text-gray-400 mt-1">已配置时留空表示不修改；密钥仅保存在本机 SQLite，不会明文返回浏览器。</p>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-1.5">API 地址</label>
+					<input id="aiConfigBase" type="text" placeholder="https://api.openai.com/v1"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary">
+					<p class="text-xs text-gray-400 mt-1">需兼容 OpenAI Chat Completions，填写到 <code>/v1</code> 为止，例如 DeepSeek、硅基流动、Ollama。</p>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-1.5">模型名称</label>
+					<input id="aiConfigModel" type="text" placeholder="gpt-4o-mini"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary">
+				</div>
+				<p id="aiConfigTestResult" class="text-xs text-gray-500 hidden"></p>
+				<p class="text-xs text-gray-400">免费 AI 默认使用 <span id="aiConfigFreeModel">DeepSeek V4 Flash</span>（免密钥），额度用尽后会自动尝试备用免费模型。配置 Key 后，AI 问答和 AI 补齐都会使用你配置的接口。</p>
+				<p class="text-xs text-gray-400 break-words">想使用 DeepSeek V4.1 Flash：地址填
+					<code class="break-all">https://opencode.ai/inference/openai/v1</code>，模型填
+					<code class="break-all">deepseek-v4.1-flash</code>，Key 从 OpenCode Console 获取。</p>
+			</div>
+			<div class="p-5 border-t flex flex-wrap justify-between gap-2 sticky bottom-0 bg-white rounded-b-2xl">
+				<button onclick="clearAiConfig()" id="aiConfigClearBtn"
+					class="px-3 py-2 text-sm border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition">
+					恢复免费 AI
+				</button>
+				<div class="flex gap-2">
+					<button onclick="testAiConfig()" id="aiConfigTestBtn"
+						class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition disabled:opacity-60">
+						测试连接
+					</button>
+					<button onclick="saveAiConfig()" id="aiConfigSaveBtn"
+						class="px-5 py-2 bg-plant-primary text-white rounded-lg hover:bg-plant-dark transition disabled:opacity-60">
+						保存配置
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- 弹窗：新增/编辑植物 -->
+	<div id="plantModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin">
+			<div class="p-6 border-b flex justify-between items-center">
+				<h2 id="plantModalTitle" class="text-xl font-bold text-gray-800">新增植物</h2>
+				<button onclick="closePlantModal()" class="text-gray-400 hover:text-gray-700 text-xl">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div class="p-6 space-y-4">
+				<input type="hidden" id="editId">
+				<input type="hidden" id="editSource">
+				<!-- 图片上传 -->
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">植物图片</label>
+					<div class="flex flex-col sm:flex-row gap-4 sm:items-center">
+						<img id="previewImg" src="" alt="预览图"
+							class="w-28 h-28 object-cover rounded-lg border border-gray-200 bg-gray-50">
+						<div class="space-y-2 flex-1">
+							<input type="file" id="imgFile" accept="image/*" onchange="handleImageSelect()"
+								class="hidden">
+							<div class="flex flex-wrap gap-2">
+								<button onclick="document.getElementById('imgFile').click()"
+									class="px-4 py-2 bg-plant-light text-plant-primary rounded-lg hover:bg-plant-secondary hover:text-white transition">
+									<i class="fa fa-upload"></i> 选择本地图片
+								</button>
+								<button onclick="openImageSearch()" id="netImageBtn"
+									class="px-4 py-2 bg-plant-primary text-white rounded-lg hover:bg-plant-dark transition">
+									<i class="fa fa-globe"></i> 网络图片
+								</button>
+								<button onclick="clearImage()"
+									class="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+									清除图片
+								</button>
+							</div>
+							<div class="flex gap-2">
+								<input id="imgUrlInput" type="text" placeholder="粘贴图片URL地址"
+									class="flex-1 border rounded-lg px-2 py-1.5 text-sm">
+								<button onclick="fetchImageUrl()" id="fetchImgUrlBtn"
+									class="px-2 py-1.5 bg-plant-primary text-white rounded-lg text-sm whitespace-nowrap">
+									<i class="fa fa-download"></i>加载URL图片
+								</button>
+							</div>
+							<p id="imgSizeTip" class="text-xs text-gray-400">本地图片会自动压缩为最长边 1280px 的 JPEG；也可点「网络图片」按植物名称挑选，选中后由服务端保存。</p>
+						</div>
+					</div>
+					<input type="hidden" id="plantImage">
+				</div>
+				<!-- 植物名称 -->
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">植物名称</label>
+					<div class="flex flex-col sm:flex-row gap-2">
+						<input id="plantName" type="text"
+							class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary"
+							placeholder="例如：牡丹">
+						<div class="flex gap-2 shrink-0">
+							<button onclick="fillFromLocalPlantLib()" id="fillLibBtn"
+								class="flex-1 sm:flex-none bg-plant-primary text-white px-3 py-2.5 rounded-lg hover:bg-plant-dark transition whitespace-nowrap">
+								<i class="fa fa-book"></i> 🔍从库匹配补全
+							</button>
+							<button onclick="aiFillPlant()" id="aiFillBtn"
+								class="flex-1 sm:flex-none bg-indigo-600 text-white px-3 py-2.5 rounded-lg hover:bg-indigo-700 transition whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed">
+								<i class="fa fa-magic"></i> AI 补齐
+							</button>
+						</div>
+					</div>
+					<p id="aiFillTip" class="text-xs text-indigo-500 mt-1 hidden"></p>
+					<p class="text-xs text-gray-400 mt-1">新增保存：同名会复用数据库已有记录；重名条目较多时会提示先处理。</p>
+				</div>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div>
+						<label class="block font-medium text-gray-700 mb-2">种植地区</label>
+						<input id="plantArea" type="text"
+							class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary"
+							placeholder="如：长江流域、华北">
+					</div>
+					<div>
+						<label class="block font-medium text-gray-700 mb-2">种植时间</label>
+						<input id="plantSowTime" type="text"
+							class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary"
+							placeholder="如：秋季9-10月">
+					</div>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">花期</label>
+					<input id="plantBloomTime" type="text"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary"
+						placeholder="如：4-5月">
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">详细介绍</label>
+					<textarea id="plantDesc" rows="3"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary resize-none"
+						placeholder="植物习性介绍"></textarea>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">养护方法</label>
+					<textarea id="plantCare" rows="3"
+						class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-plant-secondary resize-none"
+						placeholder="光照、浇水、施肥、修剪等养护要点"></textarea>
+				</div>
+				<div>
+					<label class="block font-medium text-gray-700 mb-2">常见病害</label>
+					<div id="diseasePicker"
+						class="w-full min-h-[3rem] border border-gray-300 rounded-lg px-3 py-2.5 flex flex-wrap gap-2 focus-within:ring-2 focus-within:ring-plant-secondary"></div>
+					<input type="hidden" id="plantDisease" value="">
+					<p id="diseasePickerEmpty" class="text-xs text-amber-600 mt-1 hidden">病害库为空，请先到设置菜单的 🦠 病害库中添加。</p>
+					<p class="text-xs text-gray-400 mt-1">只能从病害库选择，点击可多选</p>
+				</div>
+				<div class="pt-4 flex justify-end gap-3">
+					<button onclick="closePlantModal()"
+						class="px-5 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition">取消</button>
+					<button onclick="savePlant()" id="savePlantBtn"
+						class="px-5 py-2.5 bg-plant-primary text-white rounded-lg hover:bg-plant-dark transition">保存</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- 弹窗：植物病害详情 -->
+	<div id="diseaseDetailModal" class="fixed inset-0 bg-black/50 z-[60] hidden flex items-center justify-center p-4">
+		<div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto scrollbar-thin">
+			<div class="p-5 border-b flex justify-between items-center">
+				<h2 id="diseaseDetailTitle" class="text-lg font-bold text-gray-800">病害详情</h2>
+				<button onclick="closeDiseaseDetail()" class="text-gray-400 hover:text-gray-700 text-xl">
+					<i class="fa fa-times"></i>
+				</button>
+			</div>
+			<div id="diseaseDetailBody" class="p-5 space-y-3 text-sm text-gray-700"></div>
+		</div>
+	</div>
+
+	<!-- 提示条 -->
+	<div id="toastBox" class="fixed top-4 right-4 z-[200] space-y-2 w-80 max-w-[90vw]"></div>
+
+	<script>
+		const COOKIE_NAME = "plant_token";
+		const state = {
+			allPlantStore: [],
+			userPlantIdList: [],
+			todoDoneSet: new Set(),
+			todoPeriod: "",
+			diseases: [],
+			currentView: "user",
+			expandCardIds: new Set(),
+			editingSource: "user",
+			newSource: "user",
+			selectedImageData: "",
+			selectedDiseaseNames: [],
+			editingDiseaseId: "",
+			imageSearchResults: [],
+			imageSearchPage: 1,
+			imageSearchKeyword: "",
+			imageSearchLoading: false,
+			aiChatMessages: [],
+			aiChatSending: false,
+			aiProviderLabel: "免费 AI",
+			aiQuotaShown: false,
+			loaded: false,
+		};
+
+		const api = axios.create({ timeout: 30000 });
+
+		api.interceptors.response.use(
+			resp => resp,
+			err => {
+				if (err.response && err.response.status === 401) {
+					showAuthOverlay();
+				}
+				return Promise.reject(err);
+			}
+		);
+
+		function errText(err) {
+			const d = err && err.response && err.response.data;
+			if (d && typeof d.detail === "string") return d.detail;
+			if (d && d.detail && typeof d.detail === "object") return d.detail.message || "请求失败";
+			if (d && Array.isArray(d.detail)) return "请求参数错误";
+			return (err && err.message) || "请求失败";
+		}
+
+		function escapeHtml(str) {
+			if (str === null || str === undefined) return "";
+			return String(str)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
+		}
+
+		function toast(message, type = "info", ms = 3500) {
+			const colors = {
+				info: "bg-gray-800",
+				success: "bg-plant-primary",
+				error: "bg-red-600",
+				warn: "bg-amber-600",
+			};
+			const el = document.createElement("div");
+			el.className = `${colors[type] || colors.info} text-white px-4 py-3 rounded-xl shadow-lg text-sm flex items-start gap-2`;
+			el.innerHTML = `<i class="fa ${type === "success" ? "fa-check-circle" : type === "error" ? "fa-exclamation-circle" : type === "warn" ? "fa-exclamation-triangle" : "fa-info-circle"} mt-0.5"></i><span class="flex-1"></span>`;
+			el.querySelector("span").innerText = message;
+			document.getElementById("toastBox").appendChild(el);
+			setTimeout(() => {
+				el.style.transition = "opacity .3s";
+				el.style.opacity = "0";
+				setTimeout(() => el.remove(), 300);
+			}, ms);
+		}
+
+		// ------------------------------------------------------------------
+		// 认证
+		// ------------------------------------------------------------------
+		function showAuthOverlay() {
+			document.getElementById("authOverlay").classList.remove("hidden");
+			document.getElementById("app").classList.add("hidden");
+			["aiQuotaModal", "aiChatModal", "aiConfigModal", "imageSearchModal", "plantModal", "diseaseDetailModal", "diseaseFormModal"]
+				.forEach(id => document.getElementById(id).classList.add("hidden"));
+			state.loaded = false;
+		}
+
+		function hideAuthOverlay() {
+			document.getElementById("authOverlay").classList.add("hidden");
+			document.getElementById("app").classList.remove("hidden");
+		}
+
+		function showFormError(id, message) {
+			const el = document.getElementById(id);
+			el.innerText = message;
+			el.classList.remove("hidden");
+		}
+
+		async function doLogin() {
+			const username = document.getElementById("loginUsername").value.trim();
+			const pwd = document.getElementById("loginPwd").value;
+			document.getElementById("loginErrMsg").classList.add("hidden");
+			if (!username || !pwd) {
+				showFormError("loginErrMsg", "请输入用户名和密码");
+				return;
+			}
+			try {
+				await api.post("/api/auth/login", { username, password: pwd });
+				document.getElementById("loginPwd").value = "";
+				await afterAuthSuccess();
+			} catch (err) {
+				showFormError("loginErrMsg", errText(err));
+			}
+		}
+
+		async function doRegister() {
+			const username = document.getElementById("regUsername").value.trim();
+			const p1 = document.getElementById("regPwd1").value;
+			const p2 = document.getElementById("regPwd2").value;
+			document.getElementById("regErrMsg").classList.add("hidden");
+			try {
+				await api.post("/api/auth/register", { username, password1: p1, password2: p2 });
+				document.getElementById("regPwd1").value = "";
+				document.getElementById("regPwd2").value = "";
+				await afterAuthSuccess();
+				toast("注册成功，已自动登录", "success");
+			} catch (err) {
+				showFormError("regErrMsg", errText(err));
+			}
+		}
+
+		async function doLogout() {
+			try {
+				await api.post("/api/auth/logout");
+			} catch (err) {
+				// 忽略退出接口异常，前端仍然回到登录页
+			}
+			location.reload();
+		}
+
+		function toggleSettings(event) {
+			if (event) event.stopPropagation();
+			const menu = document.getElementById("settingsMenu");
+			const btn = document.getElementById("settingsBtn");
+			const caret = document.getElementById("settingsCaret");
+			const willOpen = menu.classList.contains("hidden");
+			menu.classList.toggle("hidden", !willOpen);
+			btn.setAttribute("aria-expanded", String(willOpen));
+			if (caret) caret.classList.toggle("rotate-180", willOpen);
+			if (willOpen) {
+				const first = menu.querySelector("button[role='menuitem']");
+				if (first) first.focus();
+			}
+		}
+
+		function closeSettings() {
+			const menu = document.getElementById("settingsMenu");
+			if (!menu || menu.classList.contains("hidden")) return;
+			menu.classList.add("hidden");
+			document.getElementById("settingsBtn").setAttribute("aria-expanded", "false");
+			const caret = document.getElementById("settingsCaret");
+			if (caret) caret.classList.remove("rotate-180");
+		}
+
+		async function afterAuthSuccess() {
+			hideAuthOverlay();
+			await reloadDataAndRender();
+		}
+
+		async function init() {
+			bindEvents();
+			try {
+				const status = await api.get("/api/auth/status");
+				if (status.data.is_registered) {
+					document.getElementById("loginFormWrap").classList.remove("hidden");
+					document.getElementById("registerFormWrap").classList.add("hidden");
+				} else {
+					document.getElementById("loginFormWrap").classList.add("hidden");
+					document.getElementById("registerFormWrap").classList.remove("hidden");
+				}
+			} catch (err) {
+				toast("无法连接后端服务：" + errText(err), "error", 8000);
+			}
+			try {
+				await api.get("/api/auth/me");
+				await afterAuthSuccess();
+			} catch (err) {
+				// 未登录，保留登录遮罩
+			}
+		}
+
+		// ------------------------------------------------------------------
+		// 数据加载 / 渲染
+		// ------------------------------------------------------------------
+		async function reloadDataAndRender() {
+			const res = await api.get("/api/all");
+			const data = res.data || {};
+			state.allPlantStore = data.plantList || [];
+			state.userPlantIdList = data.userPlantIdList || [];
+			state.todoDoneSet = new Set(data.todoDone || []);
+			state.todoPeriod = data.todoPeriod || "";
+			state.diseases = data.diseases || [];
+			state.loaded = true;
+			renderCurrentView();
+			renderTodo();
+			if (!document.getElementById("diseasePage").classList.contains("hidden")) {
+				renderDiseaseList();
+			}
+		}
+
+		function getPlantById(id) {
+			return state.allPlantStore.find(p => p.id === id);
+		}
+
+		function splitDiseaseNames(text) {
+			if (!text) return [];
+			return [...new Set(String(text).split(/[、,，;；\n]+/).map(s => s.trim()).filter(Boolean))];
+		}
+
+		function getPlantDiseaseNames(text) {
+			if (!text) return [];
+			const tokens = splitDiseaseNames(text);
+			const names = state.diseases.map(d => d.name).filter(Boolean);
+			const exact = tokens.filter(t => names.includes(t));
+			const matched = exact.length ? exact : names.filter(n => text.includes(n));
+			return [...new Set(matched)];
+		}
+
+		function toggleView() {
+			state.currentView = state.currentView === "user" ? "lib" : "user";
+			updateViewUi();
+			renderCurrentView();
+		}
+
+		function updateViewUi() {
+			const label = document.getElementById("currentViewLabel");
+			const viewMenuLabel = document.getElementById("viewMenuLabel");
+			const todoWrap = document.getElementById("todoWrap");
+			const emptyTipText = document.getElementById("emptyTipText");
+			if (state.currentView === "user") {
+				label.innerText = "▶ 当前：我的种植植物";
+				viewMenuLabel.innerText = "进入植物库";
+				todoWrap.classList.remove("hidden");
+				emptyTipText.innerText = "暂无我的种植植物，点击🌱新增植物进行添加";
+			} else {
+				label.innerText = "▶ 当前：总植物素材库";
+				viewMenuLabel.innerText = "返回我的种植";
+				todoWrap.classList.add("hidden");
+				emptyTipText.innerText = "总植物库暂无数据";
+			}
+		}
+
+		function renderCurrentView() {
+			if (!state.loaded) return;
+			const searchVal = (document.getElementById("searchInput").value || "").trim().toLowerCase();
+			const container = document.getElementById("plantList");
+			const emptyTip = document.getElementById("emptyTip");
+			let sourceList = state.currentView === "user"
+				? state.allPlantStore.filter(p => state.userPlantIdList.includes(p.id))
+				: state.allPlantStore;
+			const filterData = sourceList.filter(item => {
+				if (!searchVal) return true;
+				const name = (item.name || "").toLowerCase();
+				const area = (item.area || "").toLowerCase();
+				return name.includes(searchVal) || area.includes(searchVal);
+			});
+			if (filterData.length === 0) {
+				container.innerHTML = "";
+				emptyTip.classList.remove("hidden");
+				return;
+			}
+			emptyTip.classList.add("hidden");
+			container.innerHTML = filterData.map(item => {
+				const isExpand = state.expandCardIds.has(item.id);
+				const diseaseNames = getPlantDiseaseNames(item.disease || "");
+				const imgHtml = item.img
+					? `<img src="${escapeHtml(item.img)}" loading="lazy" class="w-full h-full object-cover" alt="${escapeHtml(item.name)}">`
+					: `<div class="w-full h-full flex items-center justify-center text-plant-secondary text-5xl"><i class="fa fa-leaf"></i></div>`;
+				return `
+            <div class="bg-white rounded-2xl overflow-hidden card-shadow hover:shadow-lg transition-all duration-300 flex flex-col relative">
+                <button data-action="expand" data-id="${escapeHtml(item.id)}" title="展开/收起"
+                    class="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-plant-primary hover:bg-plant-primary hover:text-white">
+                    <i class="fa ${isExpand ? 'fa-minus' : 'fa-plus'}"></i>
+                </button>
+                <div class="h-48 bg-gray-100">${imgHtml}</div>
+                <div class="p-5 flex flex-col flex-1">
+                    <h3 class="text-xl font-bold text-gray-800 mb-1">${escapeHtml(item.name)}</h3>
+                    <div class="text-sm text-gray-500 space-y-1 my-2">
+                        <p><i class="fa fa-map-marker text-plant-primary w-5"></i>地区：${escapeHtml(item.area || "未填写")}</p>
+                        <p><i class="fa fa-calendar-plus-o text-plant-primary w-5"></i>种植时间：${escapeHtml(item.sowTime || "未填写")}</p>
+                        <p><i class="fa fa-calendar text-plant-primary w-5"></i>花期：${escapeHtml(item.bloomTime || "未填写")}</p>
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2 line-clamp-2">${escapeHtml(item.desc || "暂无介绍")}</div>
+                    ${item.care ? `<div class="text-xs mt-2 text-green-700">养护：${escapeHtml(item.care.substring(0, 60))}${item.care.length > 60 ? "…" : ""}</div>` : ""}
+                    ${diseaseNames.length ? `<div class="text-xs mt-1 text-red-600 flex flex-wrap items-center gap-x-1">
+                        <span>病害：</span>${diseaseNames.map((name, idx) => `${idx ? "<span>，</span>" : ""}<button type="button" data-action="disease-name" data-name="${escapeHtml(name)}"
+                            class="underline decoration-dotted underline-offset-2 hover:text-red-700">${escapeHtml(name)}</button>`).join("")}
+                    </div>` : ""}
+                    <div class="mt-auto pt-4 ${isExpand ? '' : 'hidden'} flex flex-wrap gap-2">
+                        <button data-action="edit" data-id="${escapeHtml(item.id)}"
+                            class="flex-1 min-w-[80px] py-2 bg-plant-light text-plant-primary rounded-lg hover:bg-plant-secondary hover:text-white transition">
+                            <i class="fa fa-pencil"></i> 编辑
+                        </button>
+                        <button data-action="${state.currentView === "user" ? "delete-user" : "delete-store"}" data-id="${escapeHtml(item.id)}"
+                            class="flex-1 min-w-[80px] py-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition">
+                            <i class="fa fa-trash"></i> 删除
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+			}).join("");
+		}
+
+		function extractMonths(str) {
+			if (!str) return [];
+			const nums = String(str).match(/\d+/g);
+			if (!nums) return [];
+			return [...new Set(nums.map(x => parseInt(x, 10)).filter(n => n >= 1 && n <= 12))];
+		}
+
+		function periodMonth(period) {
+			if (period && period.length === 7) return parseInt(period.slice(5, 7), 10);
+			return new Date().getMonth() + 1;
+		}
+
+		function renderTodo() {
+			const month = periodMonth(state.todoPeriod);
+			document.getElementById("todoMonthTip").innerText = `(${month}月 · ${state.todoPeriod || "当前月份"})`;
+			const todoListEl = document.getElementById("todoList");
+			const todoEmptyEl = document.getElementById("todoEmpty");
+			const userPlants = state.allPlantStore.filter(p => state.userPlantIdList.includes(p.id));
+			const todoItems = userPlants.filter(p => extractMonths(p.sowTime).includes(month));
+			if (todoItems.length === 0) {
+				todoListEl.innerHTML = "";
+				todoEmptyEl.classList.remove("hidden");
+				return;
+			}
+			todoEmptyEl.classList.add("hidden");
+			todoListEl.innerHTML = todoItems.map(p => {
+				const done = state.todoDoneSet.has(p.id);
+				return `
+                <div class="flex items-center gap-3 p-2.5 rounded-lg ${done ? 'bg-gray-100' : 'bg-plant-light'}">
+                    <input type="checkbox" ${done ? "checked" : ""} data-action="todo-toggle" data-id="${escapeHtml(p.id)}"
+                        class="w-5 h-5 accent-plant-primary cursor-pointer">
+                    <div class="flex-1">
+                        <span class="${done ? 'line-through text-gray-400 font-normal' : 'font-medium text-gray-800'}">${escapeHtml(p.name)}</span>
+                        <span class="text-xs text-gray-500 ml-2">种植：${escapeHtml(p.sowTime || "")}</span>
+                    </div>
+                    <button data-action="edit" data-id="${escapeHtml(p.id)}" class="text-sm text-plant-primary hover:underline">编辑</button>
+                </div>`;
+			}).join("");
+		}
+
+		// ------------------------------------------------------------------
+		// 植物弹窗 / 图片
+		// ------------------------------------------------------------------
+		function openPlantModal(source) {
+			state.newSource = source === "lib" ? "lib" : "user";
+			state.editingSource = state.newSource;
+			state.selectedImageData = "";
+			document.getElementById("plantModal").classList.remove("hidden");
+			document.getElementById("plantModalTitle").innerText = source === "lib" ? "新增总库植物" : "新增我的植物";
+			document.getElementById("editId").value = "";
+			document.getElementById("editSource").value = state.newSource;
+			["plantName", "plantArea", "plantSowTime", "plantBloomTime", "plantDesc", "plantCare", "imgUrlInput"]
+				.forEach(id => document.getElementById(id).value = "");
+			document.getElementById("plantImage").value = "";
+			document.getElementById("previewImg").src = "";
+			document.getElementById("imgFile").value = "";
+			document.getElementById("imgSizeTip").innerText = "本地图片会自动压缩为最长边 1280px 的 JPEG；也可点「网络图片」按植物名称挑选，选中后由服务端保存。";
+			const aiTip = document.getElementById("aiFillTip");
+			aiTip.classList.add("hidden");
+			aiTip.innerText = "";
+			setSelectedDiseases([]);
+		}
+
+		function closePlantModal() {
+			closeImageSearch();
+			document.getElementById("plantModal").classList.add("hidden");
+		}
+
+		function fileToDataUrl(file) {
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = () => resolve(reader.result);
+				reader.onerror = reject;
+				reader.readAsDataURL(file);
+			});
+		}
+
+		function loadImageElement(src) {
+			return new Promise((resolve, reject) => {
+				const img = new Image();
+				img.onload = () => resolve(img);
+				img.onerror = reject;
+				img.src = src;
+			});
+		}
+
+		function compressImageElement(img) {
+			const maxSide = 1280;
+			let width = img.naturalWidth || img.width;
+			let height = img.naturalHeight || img.height;
+			if (width > maxSide || height > maxSide) {
+				const scale = Math.min(maxSide / width, maxSide / height);
+				width = Math.max(1, Math.round(width * scale));
+				height = Math.max(1, Math.round(height * scale));
+			}
+			const canvas = document.createElement("canvas");
+			canvas.width = width;
+			canvas.height = height;
+			const ctx = canvas.getContext("2d");
+			ctx.fillStyle = "#ffffff";
+			ctx.fillRect(0, 0, width, height);
+			ctx.drawImage(img, 0, 0, width, height);
+			return canvas.toDataURL("image/jpeg", 0.85);
+		}
+
+		async function compressImage(file) {
+			const rawDataUrl = await fileToDataUrl(file);
+			if (file.type === "image/gif" || file.type === "image/svg+xml") {
+				return rawDataUrl;
+			}
+			const img = await loadImageElement(rawDataUrl);
+			return compressImageElement(img);
+		}
+
+		async function compressDataUrl(dataUrl) {
+			const img = await loadImageElement(dataUrl);
+			return compressImageElement(img);
+		}
+
+		async function handleImageSelect() {
+			const file = document.getElementById("imgFile").files[0];
+			if (!file) return;
+			if (!file.type.startsWith("image/")) {
+				toast("请选择图片文件", "warn");
+				return;
+			}
+			const tip = document.getElementById("imgSizeTip");
+			tip.innerText = "图片处理中...";
+			try {
+				const dataUrl = await compressImage(file);
+				setPreviewImage(dataUrl);
+				const kb = Math.round(dataUrl.length * 0.75 / 1024);
+				tip.innerText = `已压缩：约 ${kb} KB（最长边 1280px）`;
+			} catch (err) {
+				console.error(err);
+				tip.innerText = "图片读取失败，请换一张图片";
+				toast("图片读取失败：" + (err.message || err), "error");
+			}
+		}
+
+		function setPreviewImage(dataUrl) {
+			state.selectedImageData = dataUrl || "";
+			document.getElementById("plantImage").value = dataUrl || "";
+			document.getElementById("previewImg").src = dataUrl || "";
+		}
+
+		function clearImage() {
+			setPreviewImage("");
+			document.getElementById("imgFile").value = "";
+			document.getElementById("imgUrlInput").value = "";
+			document.getElementById("imgSizeTip").innerText = "图片已清除";
+		}
+
+		async function fetchImageUrl() {
+			const url = document.getElementById("imgUrlInput").value.trim();
+			if (!url) {
+				toast("请粘贴图片URL地址", "warn");
+				return;
+			}
+			const btn = document.getElementById("fetchImgUrlBtn");
+			btn.disabled = true;
+			btn.innerHTML = "加载中...";
+			try {
+				const resp = await api.post("/api/image/fetch", { url });
+				const dataUrl = resp.data.dataUrl;
+				if (dataUrl.length * 0.75 > 8 * 1024 * 1024) {
+					toast("图片超过 8MB 限制", "warn");
+					return;
+				}
+				setPreviewImage(dataUrl);
+				document.getElementById("imgSizeTip").innerText = `服务端加载成功：约 ${Math.round(dataUrl.length * 0.75 / 1024)} KB`;
+			} catch (err) {
+				toast("图片加载失败：" + errText(err), "error", 6000);
+			} finally {
+				btn.disabled = false;
+				btn.innerHTML = "<i class='fa fa-download'></i>加载URL图片";
+			}
+		}
+
+		// ------------------------------------------------------------------
+		// 免费 AI 额度提示
+		// ------------------------------------------------------------------
+		function freeQuotaDetail(err) {
+			const d = err && err.response && err.response.data;
+			if (d && d.detail && typeof d.detail === "object" && d.detail.code === "free_quota_exceeded") {
+				return d.detail;
+			}
+			return null;
+		}
+
+		function closeAiQuota() {
+			document.getElementById("aiQuotaModal").classList.add("hidden");
+		}
+
+		function openAiConfigFromQuota() {
+			closeAiQuota();
+			openAiConfig();
+		}
+
+		function showAiQuotaModal(info, fallback) {
+			if (state.aiQuotaShown) return;
+			state.aiQuotaShown = true;
+			const data = info || {};
+			const provider = data.provider || "免费 AI";
+			let when = "额度会按服务方规则自动恢复";
+			if (data.retryAfter) {
+				const minutes = Math.round(Number(data.retryAfter) / 60);
+				when = minutes >= 1
+					? `预计约 ${minutes} 分钟后恢复`
+					: `预计约 ${data.retryAfter} 秒后恢复`;
+			}
+			document.getElementById("aiQuotaText").innerText = fallback
+				? `${provider} 的免费额度已用完（${when}）。本次已自动切换到备用免费模型，回答质量可能略有差异。注册并配置 API Key 后，可继续使用 DeepSeek V4.1 等稳定模型。`
+				: `免费 AI 额度已用完（${when}），暂时无法回答。注册并配置 API Key 后，可继续使用 DeepSeek V4.1 等稳定模型。`;
+			document.getElementById("aiQuotaModal").classList.remove("hidden");
+		}
+
+		// ------------------------------------------------------------------
+		// AI 问答
+		// ------------------------------------------------------------------
+		const AI_CHAT_WELCOME = {
+			role: "assistant",
+			content: "你好，我是植物养护助手，只回答植物相关的问题。可以这样问我：",
+			suggestions: ["月季叶子发黄怎么办？", "牡丹多久浇一次水？", "多肉夏天怎么养护？"],
+		};
+
+		function openAiChat() {
+			closeSettings();
+			document.getElementById("aiChatModal").classList.remove("hidden");
+			if (!state.aiChatMessages.length) {
+				state.aiChatMessages = [{ ...AI_CHAT_WELCOME }];
+			}
+			renderAiChat();
+			refreshAiProviderLabel();
+			document.getElementById("aiChatInput").focus();
+		}
+
+		function closeAiChat() {
+			document.getElementById("aiChatModal").classList.add("hidden");
+		}
+
+		function setAiChatProvider(label, blocked) {
+			const el = document.getElementById("aiChatProvider");
+			el.innerText = blocked ? "话题限制已生效" : (label || state.aiProviderLabel);
+			el.className = blocked ? "text-amber-600" : "text-plant-primary";
+		}
+
+		async function refreshAiProviderLabel() {
+			try {
+				const resp = await api.get("/api/ai/config");
+				const cfg = resp.data || {};
+				state.aiProviderLabel = cfg.configured ? cfg.model : `免费 AI · ${cfg.freeModel}`;
+				setAiChatProvider(state.aiProviderLabel);
+			} catch (err) {
+				setAiChatProvider(state.aiProviderLabel);
+			}
+		}
+
+		function renderAiChat() {
+			const box = document.getElementById("aiChatMessages");
+			const messages = state.aiChatMessages.map(m => {
+				const isUser = m.role === "user";
+				const bubbleClass = isUser
+					? "bg-plant-primary text-white rounded-br-md"
+					: m.error
+						? "bg-red-50 text-red-600 border border-red-100"
+						: m.blocked
+							? "bg-amber-50 text-amber-700 border border-amber-100"
+							: "bg-white text-gray-700 border border-gray-200";
+				const suggestions = m.suggestions
+					? `<div class="flex flex-wrap gap-2 mt-2">${m.suggestions.map(text => `
+						<button type="button" onclick="askAiSuggestion('${escapeHtml(text)}')"
+							class="px-3 py-1.5 rounded-full border border-plant-secondary text-plant-primary bg-plant-light text-xs hover:bg-plant-secondary hover:text-white transition">
+							${escapeHtml(text)}
+						</button>`).join("")}</div>`
+					: "";
+				return `<div class="flex ${isUser ? "justify-end" : "justify-start"}">
+					<div class="max-w-[85%]">
+						<div class="rounded-2xl px-4 py-2.5 text-sm leading-6 whitespace-pre-wrap break-words ${bubbleClass}">${escapeHtml(m.content)}</div>
+						${suggestions}
+					</div>
+				</div>`;
+			}).join("");
+			const typing = state.aiChatSending
+				? `<div class="flex justify-start"><div class="bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm text-gray-400">
+						<i class="fa fa-spinner fa-spin mr-1"></i>AI 正在思考...
+					</div></div>`
+				: "";
+			box.innerHTML = messages + typing;
+			box.scrollTop = box.scrollHeight;
+		}
+
+		function askAiSuggestion(text) {
+			document.getElementById("aiChatInput").value = text;
+			sendAiChat();
+		}
+
+		function setAiChatSending(sending) {
+			const btn = document.getElementById("aiChatSendBtn");
+			btn.disabled = sending;
+			btn.innerHTML = sending
+				? '<i class="fa fa-spinner fa-spin"></i> 思考中'
+				: '<i class="fa fa-paper-plane"></i> 发送';
+		}
+
+		async function sendAiChat() {
+			if (state.aiChatSending) return;
+			const input = document.getElementById("aiChatInput");
+			const text = input.value.trim();
+			if (!text) return;
+			input.value = "";
+			state.aiChatMessages.push({ role: "user", content: text });
+			state.aiChatSending = true;
+			setAiChatSending(true);
+			renderAiChat();
+			try {
+				const history = state.aiChatMessages
+					.filter(m => m.role === "user" || (m.role === "assistant" && !m.suggestions))
+					.slice(-10)
+					.map(m => ({ role: m.role, content: m.content }));
+				const resp = await api.post("/api/ai/chat", { messages: history }, { timeout: 120000 });
+				const data = resp.data || {};
+				state.aiChatMessages.push({
+					role: "assistant",
+					content: data.reply || "AI 没有返回内容，请重试。",
+					blocked: !!data.blocked,
+				});
+				setAiChatProvider(data.provider, data.blocked);
+				if (data.quotaExceeded) showAiQuotaModal(data.quotaExceeded, true);
+			} catch (err) {
+				const quota = freeQuotaDetail(err);
+				if (quota) showAiQuotaModal(quota, false);
+				state.aiChatMessages.push({
+					role: "assistant",
+					content: quota
+						? "免费 AI 额度已用完，暂时无法回答。请按弹窗指引配置 API Key 后重试。"
+						: "请求失败：" + errText(err),
+					error: true,
+				});
+			} finally {
+				state.aiChatSending = false;
+				setAiChatSending(false);
+				renderAiChat();
+			}
+		}
+
+		// ------------------------------------------------------------------
+		// AI 设置
+		// ------------------------------------------------------------------
+		async function openAiConfig() {
+			closeSettings();
+			document.getElementById("aiConfigModal").classList.remove("hidden");
+			document.getElementById("aiConfigTestResult").classList.add("hidden");
+			await loadAiConfig();
+		}
+
+		function closeAiConfig() {
+			document.getElementById("aiConfigModal").classList.add("hidden");
+		}
+
+		async function loadAiConfig() {
+			try {
+				const resp = await api.get("/api/ai/config");
+				applyAiConfig(resp.data || {});
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		function applyAiConfig(cfg) {
+			const configured = !!cfg.configured;
+			document.getElementById("aiConfigKey").value = "";
+			document.getElementById("aiConfigKey").placeholder = configured
+				? `已配置 ${cfg.keyMasked}，留空不修改`
+				: "sk-...（留空使用免费 AI）";
+			document.getElementById("aiConfigBase").value = cfg.baseUrl || "https://api.openai.com/v1";
+			document.getElementById("aiConfigModel").value = cfg.model || "gpt-4o-mini";
+			document.getElementById("aiConfigFreeModel").innerText = cfg.freeModel || "DeepSeek V4 Flash（免费）";
+			document.getElementById("aiConfigStatus").innerText = configured
+				? `已配置自有 AI：${cfg.model}（${cfg.keyMasked}）`
+				: `未配置，使用免费 AI（${cfg.freeModel}）`;
+			const clearBtn = document.getElementById("aiConfigClearBtn");
+			clearBtn.disabled = !configured;
+			clearBtn.className = configured
+				? "px-3 py-2 text-sm border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition"
+				: "px-3 py-2 text-sm border border-gray-200 text-gray-300 rounded-lg cursor-not-allowed";
+			state.aiProviderLabel = configured ? cfg.model : `免费 AI · ${cfg.freeModel}`;
+			setAiChatProvider(state.aiProviderLabel);
+		}
+
+		function aiConfigPayload() {
+			return {
+				apiKey: document.getElementById("aiConfigKey").value.trim(),
+				baseUrl: document.getElementById("aiConfigBase").value.trim(),
+				model: document.getElementById("aiConfigModel").value.trim(),
+			};
+		}
+
+		async function saveAiConfig() {
+			const payload = aiConfigPayload();
+			if (payload.apiKey && !/^https?:\/\//i.test(payload.baseUrl)) {
+				toast("API 地址需以 http:// 或 https:// 开头", "warn");
+				return;
+			}
+			const btn = document.getElementById("aiConfigSaveBtn");
+			btn.disabled = true;
+			btn.innerText = "保存中...";
+			try {
+				const resp = await api.post("/api/ai/config", payload);
+				applyAiConfig(resp.data || {});
+				toast(resp.data && resp.data.configured ? "已切换到自有 AI" : "已保存，当前使用免费 AI", "success");
+			} catch (err) {
+				toast(errText(err), "error");
+			} finally {
+				btn.disabled = false;
+				btn.innerText = "保存配置";
+			}
+		}
+
+		async function clearAiConfig() {
+			if (!confirm("确定恢复免费 AI？已保存的 API Key 会被删除。")) return;
+			try {
+				const resp = await api.post("/api/ai/config", { clearKey: true });
+				applyAiConfig(resp.data || {});
+				toast("已恢复免费 AI", "success");
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		async function testAiConfig() {
+			const payload = aiConfigPayload();
+			const btn = document.getElementById("aiConfigTestBtn");
+			const result = document.getElementById("aiConfigTestResult");
+			btn.disabled = true;
+			btn.innerText = "测试中...";
+			result.classList.remove("hidden");
+			result.className = "text-xs text-gray-500";
+			result.innerText = "正在保存配置并测试连接...";
+			try {
+				const saved = await api.post("/api/ai/config", payload);
+				applyAiConfig(saved.data || {});
+				const resp = await api.post("/api/ai/test", {}, { timeout: 120000 });
+				const data = resp.data || {};
+				result.className = "text-xs text-green-600";
+				result.innerText = `✓ ${data.provider}：${data.reply}`;
+				if (data.quotaExceeded) showAiQuotaModal(data.quotaExceeded, true);
+			} catch (err) {
+				const quota = freeQuotaDetail(err);
+				if (quota) {
+					showAiQuotaModal(quota, false);
+					result.className = "text-xs text-amber-600";
+					result.innerText = "免费 AI 额度已用完，请配置 API Key 后重试。";
+					return;
+				}
+				result.className = "text-xs text-red-500";
+				result.innerText = "✗ " + errText(err);
+			} finally {
+				btn.disabled = false;
+				btn.innerText = "测试连接";
+			}
+		}
+
+		// ------------------------------------------------------------------
+		// 网络图片搜索
+		// ------------------------------------------------------------------
+		function imageProxyUrl(url) {
+			return `/api/image/proxy?url=${encodeURIComponent(url)}`;
+		}
+
+		function openImageSearch() {
+			const keyword = document.getElementById("plantName").value.trim();
+			if (!keyword) {
+				toast("请先填写植物名称，再搜索网络图片", "warn");
+				document.getElementById("plantName").focus();
+				return;
+			}
+			document.getElementById("imageSearchKeyword").innerText = keyword;
+			document.getElementById("imageSearchModal").classList.remove("hidden");
+			searchImageCandidates(keyword, 1);
+		}
+
+		function closeImageSearch() {
+			document.getElementById("imageSearchModal").classList.add("hidden");
+			document.getElementById("imageSearchGrid").innerHTML = "";
+			state.imageSearchResults = [];
+			state.imageSearchLoading = false;
+		}
+
+		async function searchImageCandidates(keyword, page) {
+			const grid = document.getElementById("imageSearchGrid");
+			const status = document.getElementById("imageSearchStatus");
+			const empty = document.getElementById("imageSearchEmpty");
+			const moreBtn = document.getElementById("imageSearchMoreBtn");
+			state.imageSearchKeyword = keyword;
+			state.imageSearchLoading = true;
+			state.imageSearchResults = [];
+			grid.innerHTML = "";
+			empty.classList.add("hidden");
+			status.classList.remove("hidden");
+			status.innerHTML = `<i class="fa fa-spinner fa-spin mr-1"></i>正在搜索「${escapeHtml(keyword)}」...`;
+			moreBtn.disabled = true;
+			try {
+				const resp = await api.get("/api/image/search", { params: { q: keyword, page, limit: 10 } });
+				const results = (resp.data && resp.data.results) || [];
+				state.imageSearchResults = results;
+				state.imageSearchPage = page;
+				if (!results.length) {
+					status.classList.add("hidden");
+					empty.classList.remove("hidden");
+					document.getElementById("imageSearchEmptyText").innerText =
+						page > 1 ? "没有更多图片了，换个名称再试试" : "没有找到相关图片，换个名称再试";
+					return;
+				}
+				status.innerText = `共 ${results.length} 张候选图片，点击任意一张即可选用`;
+				grid.innerHTML = results.map((item, i) => `
+					<button type="button" data-index="${i}" onclick="chooseSearchImage(${i})"
+						class="group relative aspect-square rounded-xl overflow-hidden border-2 border-gray-200 hover:border-plant-primary bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-plant-secondary">
+						<img src="${escapeHtml(imageProxyUrl(item.thumb || item.url))}" alt="候选图片 ${i + 1}"
+							loading="lazy" class="w-full h-full object-cover"
+							onerror="this.closest('button').style.display='none'">
+						<span class="absolute left-1.5 top-1.5 bg-black/45 text-white text-[10px] px-1.5 py-0.5 rounded">${i + 1}</span>
+						<span class="absolute inset-x-0 bottom-0 bg-black/55 text-white text-xs py-1 text-center opacity-0 group-hover:opacity-100 transition">点击选用</span>
+						<span data-loading
+							class="hidden absolute inset-0 items-center justify-center bg-white/85">
+							<i class="fa fa-spinner fa-spin text-plant-primary text-xl"></i>
+						</span>
+					</button>`).join("");
+			} catch (err) {
+				status.classList.add("hidden");
+				empty.classList.remove("hidden");
+				document.getElementById("imageSearchEmptyText").innerText = errText(err);
+			} finally {
+				state.imageSearchLoading = false;
+				moreBtn.disabled = false;
+			}
+		}
+
+		function loadMoreImageCandidates() {
+			if (state.imageSearchLoading || !state.imageSearchKeyword) return;
+			searchImageCandidates(state.imageSearchKeyword, state.imageSearchPage + 1);
+		}
+
+		async function chooseSearchImage(index) {
+			const item = state.imageSearchResults[index];
+			if (!item) return;
+			const card = document.querySelector(`#imageSearchGrid [data-index="${index}"]`);
+			if (card && card.disabled) return;
+			const overlay = card ? card.querySelector("[data-loading]") : null;
+			if (card) card.disabled = true;
+			if (overlay) {
+				overlay.classList.remove("hidden");
+				overlay.classList.add("flex");
+			}
+			try {
+				document.getElementById("imgSizeTip").innerText = "正在下载并压缩网络图片...";
+				let dataUrl = "";
+				let lastErr = null;
+				const candidates = [item.url, item.thumb].filter(
+					(url, idx, arr) => url && arr.indexOf(url) === idx
+				);
+				for (const url of candidates) {
+					try {
+						const resp = await api.post("/api/image/fetch", { url });
+						dataUrl = resp.data.dataUrl;
+						break;
+					} catch (fetchErr) {
+						lastErr = fetchErr;
+						console.warn("网络原图加载失败，尝试备用地址", url, fetchErr);
+					}
+				}
+				if (!dataUrl) throw lastErr || new Error("图片加载失败");
+				try {
+					dataUrl = await compressDataUrl(dataUrl);
+				} catch (compressErr) {
+					console.warn("网络图片压缩失败，使用原图", compressErr);
+				}
+				setPreviewImage(dataUrl);
+				document.getElementById("imgSizeTip").innerText =
+					`已选用网络图片：约 ${Math.round(dataUrl.length * 0.75 / 1024)} KB`;
+				closeImageSearch();
+				const scroller = document.querySelector("#plantModal > div");
+				if (scroller) scroller.scrollTo({ top: 0, behavior: "smooth" });
+				toast("已选用网络图片", "success");
+			} catch (err) {
+				document.getElementById("imgSizeTip").innerText = "网络图片加载失败，可换一张再试";
+				toast("图片加载失败：" + errText(err), "error", 6000);
+			} finally {
+				if (card) card.disabled = false;
+				if (overlay) {
+					overlay.classList.add("hidden");
+					overlay.classList.remove("flex");
+				}
+			}
+		}
+
+		function setSelectedDiseases(names) {
+			state.selectedDiseaseNames = [...new Set(names.map(n => String(n).trim()).filter(Boolean))];
+			document.getElementById("plantDisease").value = state.selectedDiseaseNames.join("、");
+			renderDiseasePicker();
+		}
+
+		function renderDiseasePicker() {
+			const wrap = document.getElementById("diseasePicker");
+			const empty = document.getElementById("diseasePickerEmpty");
+			const names = [...new Set(state.diseases.map(d => d.name).filter(Boolean))];
+			const selected = state.selectedDiseaseNames;
+			empty.classList.toggle("hidden", names.length > 0);
+			wrap.innerHTML = names.map(name => {
+				const on = selected.includes(name);
+				return `<button type="button" data-disease="${escapeHtml(name)}" aria-pressed="${on}"
+					class="px-3 py-1.5 rounded-full border text-sm transition ${on
+						? "bg-plant-primary text-white border-plant-primary"
+						: "bg-white text-gray-600 border-gray-300 hover:border-plant-primary hover:text-plant-primary"}">
+					${on ? '<i class="fa fa-check mr-1"></i>' : ""}${escapeHtml(name)}
+				</button>`;
+			}).join("") + selected.filter(n => !names.includes(n)).map(name => `
+				<span class="px-3 py-1.5 rounded-full border border-dashed border-amber-300 bg-amber-50 text-amber-700 text-sm"
+					title="病害库中没有这个名称，保存时仍会保留">
+					${escapeHtml(name)}
+					<button type="button" data-disease-remove="${escapeHtml(name)}" class="ml-1 hover:text-amber-900" aria-label="移除">×</button>
+				</span>`).join("");
+		}
+
+		function toggleDiseaseChip(name) {
+			const selected = state.selectedDiseaseNames.slice();
+			const idx = selected.indexOf(name);
+			if (idx >= 0) selected.splice(idx, 1);
+			else selected.push(name);
+			setSelectedDiseases(selected);
+		}
+
+		async function fillFromLocalPlantLib() {
+			const inputName = document.getElementById("plantName").value.trim();
+			if (!inputName) {
+				toast("请先输入植物名称", "warn");
+				return;
+			}
+			const matched = state.allPlantStore.find(p => p.name === inputName);
+			if (!matched) {
+				toast(`总植物库未找到【${inputName}】，保存将新增到库中`, "info");
+				return;
+			}
+			document.getElementById("plantArea").value = matched.area || "";
+			document.getElementById("plantSowTime").value = matched.sowTime || "";
+			document.getElementById("plantBloomTime").value = matched.bloomTime || "";
+			document.getElementById("plantDesc").value = matched.desc || "";
+			document.getElementById("plantCare").value = matched.care || "";
+			setSelectedDiseases(getPlantDiseaseNames(matched.disease || ""));
+			if (matched.img) setPreviewImage(matched.img);
+			toast("已从库中补全信息", "success");
+		}
+
+		async function aiFillPlant() {
+			const nameInput = document.getElementById("plantName");
+			const name = nameInput.value.trim();
+			const tip = document.getElementById("aiFillTip");
+			if (!name) {
+				toast("请先填写植物名称", "warn");
+				nameInput.focus();
+				return;
+			}
+			const btn = document.getElementById("aiFillBtn");
+			const originalLabel = btn.innerHTML;
+			btn.disabled = true;
+			btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> AI 补齐中...';
+			tip.classList.remove("hidden");
+			tip.innerText = "正在请求免费 AI 整理资料，通常需要 10～40 秒，请稍候...";
+			try {
+				const resp = await api.post("/api/plant/ai_fill", { name }, { timeout: 120000 });
+				const data = resp.data || {};
+				const fields = data.fields || {};
+				const fieldMap = {
+					area: "plantArea",
+					sowTime: "plantSowTime",
+					bloomTime: "plantBloomTime",
+					desc: "plantDesc",
+					care: "plantCare",
+				};
+				const conflicts = Object.keys(fieldMap).filter(
+					key => fields[key] && (document.getElementById(fieldMap[key]).value || "").trim()
+				);
+				let overwrite = true;
+				if (conflicts.length) {
+					overwrite = confirm(
+						`AI 补齐会覆盖已填写的 ${conflicts.length} 项内容。\n\n确定：全部覆盖\n取消：只补全空白项`
+					);
+				}
+				Object.keys(fieldMap).forEach(key => {
+					const value = fields[key];
+					if (!value) return;
+					const el = document.getElementById(fieldMap[key]);
+					if (overwrite || !el.value.trim()) el.value = value;
+				});
+				const createdDiseases = Array.isArray(data.createdDiseases) ? data.createdDiseases : [];
+				if (createdDiseases.length) {
+					createdDiseases.forEach(d => {
+						if (d && d.name && !state.diseases.some(x => x.name === d.name)) {
+							state.diseases.push({
+								id: d.id || "",
+								name: d.name,
+								symptom: d.symptom || "",
+								treatment: d.treatment || "",
+								prevention: d.prevention || "",
+							});
+						}
+					});
+					state.diseases.sort((a, b) => String(a.name).localeCompare(String(b.name), "zh"));
+					renderDiseasePicker();
+				}
+				if (Array.isArray(data.diseases) && data.diseases.length) {
+					setSelectedDiseases([...state.selectedDiseaseNames, ...data.diseases]);
+				}
+				const addedTip = createdDiseases.length ? `，并自动补充病害库 ${createdDiseases.length} 条` : "";
+				tip.innerText = overwrite
+					? `AI 已补齐（${data.model || "免费模型"}）${addedTip}，请核对后保存。`
+					: `已补全空白项，原有内容保留（${data.model || "免费模型"}）${addedTip}，请核对后保存。`;
+				if (data.quotaExceeded) showAiQuotaModal(data.quotaExceeded, true);
+				toast(
+					data.cached
+						? "已使用缓存的 AI 资料"
+						: `AI 已补齐植物信息${createdDiseases.length ? `，新增 ${createdDiseases.length} 个病害` : ""}`,
+					"success"
+				);
+			} catch (err) {
+				const quota = freeQuotaDetail(err);
+				if (quota) {
+					showAiQuotaModal(quota, false);
+					tip.classList.remove("hidden");
+					tip.innerText = "免费 AI 额度已用完，请按弹窗指引配置 API Key 后重试。";
+					return;
+				}
+				tip.classList.add("hidden");
+				tip.innerText = "";
+				toast(errText(err), "error", 8000);
+			} finally {
+				btn.disabled = false;
+				btn.innerHTML = originalLabel;
+			}
+		}
+
+		async function savePlant() {
+			const name = document.getElementById("plantName").value.trim();
+			if (!name) {
+				toast("植物名称不能为空", "warn");
+				return;
+			}
+			const editId = document.getElementById("editId").value;
+			const editSource = document.getElementById("editSource").value || "user";
+			const obj = {
+				id: editId,
+				name,
+				area: document.getElementById("plantArea").value.trim(),
+				sowTime: document.getElementById("plantSowTime").value.trim(),
+				bloomTime: document.getElementById("plantBloomTime").value.trim(),
+				desc: document.getElementById("plantDesc").value.trim(),
+				care: document.getElementById("plantCare").value.trim(),
+				disease: document.getElementById("plantDisease").value.trim(),
+				img: document.getElementById("plantImage").value || "",
+			};
+			const btn = document.getElementById("savePlantBtn");
+			btn.disabled = true;
+			btn.innerText = "保存中...";
+			try {
+				const resp = await api.post("/api/plant/save", { plant: obj, editSource });
+				await reloadDataAndRender();
+				closePlantModal();
+				toast(resp.data.created ? "植物已新增" : "植物已保存", "success");
+			} catch (err) {
+				toast(errText(err), "error", 6000);
+			} finally {
+				btn.disabled = false;
+				btn.innerText = "保存";
+			}
+		}
+
+		function editPlant(id) {
+			const item = getPlantById(id);
+			if (!item) {
+				toast("植物不存在，可能已被删除", "warn");
+				return;
+			}
+			state.editingSource = state.currentView;
+			state.selectedImageData = "";
+			document.getElementById("plantModal").classList.remove("hidden");
+			document.getElementById("plantModalTitle").innerText = state.currentView === "user" ? "编辑我的植物" : "编辑总植物库素材";
+			document.getElementById("editId").value = item.id;
+			document.getElementById("editSource").value = state.currentView;
+			document.getElementById("plantName").value = item.name || "";
+			document.getElementById("plantArea").value = item.area || "";
+			document.getElementById("plantSowTime").value = item.sowTime || "";
+			document.getElementById("plantBloomTime").value = item.bloomTime || "";
+			document.getElementById("plantDesc").value = item.desc || "";
+			document.getElementById("plantCare").value = item.care || "";
+			setSelectedDiseases(getPlantDiseaseNames(item.disease || ""));
+			document.getElementById("plantImage").value = item.img || "";
+			document.getElementById("previewImg").src = item.img || "";
+			document.getElementById("imgUrlInput").value = "";
+			document.getElementById("imgFile").value = "";
+			document.getElementById("imgSizeTip").innerText = item.img ? "当前图片已加载" : "尚未设置图片";
+		}
+
+		async function deleteUserPlant(id) {
+			const item = getPlantById(id);
+			if (!confirm(`确定从【我的种植植物】移除「${item ? item.name : id}」？总植物库条目会保留。`)) return;
+			try {
+				await api.post("/api/plant/delete_user", { id });
+				state.expandCardIds.delete(id);
+				await reloadDataAndRender();
+				toast("已从我的种植中移除", "success");
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		async function deleteStorePlant(id) {
+			const item = getPlantById(id);
+			if (!confirm(`⚠️确定彻底删除「${item ? item.name : id}」的完整数据？会同时从我的种植列表移除，且不可恢复。`)) return;
+			try {
+				await api.post("/api/plant/delete_store", { id });
+				state.expandCardIds.delete(id);
+				await reloadDataAndRender();
+				toast("已彻底删除", "success");
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		async function toggleTodoDone(id) {
+			try {
+				await api.post("/api/todo/toggle", { id });
+				await reloadDataAndRender();
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		// ------------------------------------------------------------------
+		// 病害库
+		// ------------------------------------------------------------------
+		function openDiseaseLib() {
+			document.getElementById("mainView").classList.add("hidden");
+			document.getElementById("diseasePage").classList.remove("hidden");
+			renderDiseaseList();
+			window.scrollTo({ top: 0 });
+		}
+
+		function closeDiseaseLib() {
+			closeDiseaseForm();
+			document.getElementById("diseasePage").classList.add("hidden");
+			document.getElementById("mainView").classList.remove("hidden");
+			window.scrollTo({ top: 0 });
+		}
+
+		function openDiseaseForm() {
+			resetDiseaseForm();
+			document.getElementById("diseaseFormModal").classList.remove("hidden");
+			document.getElementById("diseaseName").focus();
+		}
+
+		function closeDiseaseForm() {
+			document.getElementById("diseaseFormModal").classList.add("hidden");
+		}
+
+		function resetDiseaseForm() {
+			state.editingDiseaseId = "";
+			document.getElementById("diseaseEditId").value = "";
+			document.getElementById("diseaseFormTitle").innerText = "新增病害";
+			["diseaseName", "diseaseSymptom", "diseaseTreatment", "diseasePrevention"]
+				.forEach(id => document.getElementById(id).value = "");
+		}
+
+		function editDisease(id) {
+			const d = state.diseases.find(x => x.id === id);
+			if (!d) return;
+			state.editingDiseaseId = id;
+			document.getElementById("diseaseEditId").value = id;
+			document.getElementById("diseaseFormTitle").innerText = `编辑病害：${d.name}`;
+			document.getElementById("diseaseName").value = d.name || "";
+			document.getElementById("diseaseSymptom").value = d.symptom || "";
+			document.getElementById("diseaseTreatment").value = d.treatment || "";
+			document.getElementById("diseasePrevention").value = d.prevention || "";
+			document.getElementById("diseaseFormModal").classList.remove("hidden");
+			document.getElementById("diseaseName").focus();
+		}
+
+		async function saveDisease() {
+			const disease = {
+				id: document.getElementById("diseaseEditId").value,
+				name: document.getElementById("diseaseName").value.trim(),
+				symptom: document.getElementById("diseaseSymptom").value.trim(),
+				treatment: document.getElementById("diseaseTreatment").value.trim(),
+				prevention: document.getElementById("diseasePrevention").value.trim(),
+			};
+			if (!disease.name) {
+				toast("病害名称不能为空", "warn");
+				return;
+			}
+			try {
+				await api.post("/api/disease/save", { disease });
+				await reloadDataAndRender();
+				resetDiseaseForm();
+				closeDiseaseForm();
+				renderDiseaseList();
+				toast("病害已保存", "success");
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		async function deleteDisease(id) {
+			const d = state.diseases.find(x => x.id === id);
+			if (!d) return;
+			if (!confirm(`确定删除病害「${d.name}」？植物记录中的文字不会自动删除。`)) return;
+			try {
+				await api.post("/api/disease/delete", { id });
+				await reloadDataAndRender();
+				renderDiseaseList();
+				toast("病害已删除", "success");
+			} catch (err) {
+				toast(errText(err), "error");
+			}
+		}
+
+		function renderDiseaseList() {
+			const listEl = document.getElementById("diseaseList");
+			const emptyEl = document.getElementById("diseaseEmpty");
+			document.getElementById("diseaseCount").innerText = `共 ${state.diseases.length} 条`;
+			if (state.diseases.length === 0) {
+				listEl.innerHTML = "";
+				emptyEl.classList.remove("hidden");
+				return;
+			}
+			emptyEl.classList.add("hidden");
+			listEl.innerHTML = state.diseases.map(d => `
+				<div class="border border-gray-200 rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-4 hover:border-plant-secondary transition">
+					<div class="flex-1 space-y-1.5 min-w-0">
+						<p class="font-semibold text-gray-800 text-base">${escapeHtml(d.name)}</p>
+						${d.symptom ? `<p class="text-sm text-gray-600 whitespace-pre-wrap"><span class="text-gray-400">症状：</span>${escapeHtml(d.symptom)}</p>` : ""}
+						${d.treatment ? `<p class="text-sm text-green-700 whitespace-pre-wrap"><span class="text-gray-400">治理：</span>${escapeHtml(d.treatment)}</p>` : ""}
+						${d.prevention ? `<p class="text-sm text-amber-700 whitespace-pre-wrap"><span class="text-gray-400">预防：</span>${escapeHtml(d.prevention)}</p>` : ""}
+					</div>
+					<div class="flex gap-2 shrink-0">
+						<button data-action="disease-edit" data-id="${escapeHtml(d.id)}"
+							class="px-4 py-1.5 text-sm bg-plant-light text-plant-primary rounded-lg hover:bg-plant-secondary hover:text-white">编辑</button>
+						<button data-action="disease-delete" data-id="${escapeHtml(d.id)}"
+							class="px-4 py-1.5 text-sm bg-red-50 text-red-500 rounded-lg hover:bg-red-100">删除</button>
+					</div>
+				</div>`).join("");
+		}
+
+		function showDiseaseByName(name) {
+			const d = state.diseases.find(x => x.name === name);
+			document.getElementById("diseaseDetailTitle").innerText = `「${name}」病害详情`;
+			const body = document.getElementById("diseaseDetailBody");
+			if (!d) {
+				body.innerHTML = `
+					<div class="text-gray-500 text-sm py-2">
+						病害库中暂无「${escapeHtml(name)}」，请到设置菜单的 🦠 病害库中新增。
+					</div>`;
+			} else {
+				body.innerHTML = `
+					<div class="border border-gray-200 rounded-xl p-4">
+						<p class="text-xs text-gray-400 mb-1">现象</p>
+						<p class="whitespace-pre-wrap">${escapeHtml(d.symptom || "未填写")}</p>
+					</div>
+					<div class="border border-gray-200 rounded-xl p-4">
+						<p class="text-xs text-green-700 mb-1">治理方法</p>
+						<p class="whitespace-pre-wrap">${escapeHtml(d.treatment || "未填写")}</p>
+					</div>
+					<div class="border border-gray-200 rounded-xl p-4">
+						<p class="text-xs text-amber-700 mb-1">预防措施</p>
+						<p class="whitespace-pre-wrap">${escapeHtml(d.prevention || "未填写")}</p>
+					</div>`;
+			}
+			document.getElementById("diseaseDetailModal").classList.remove("hidden");
+		}
+
+		function closeDiseaseDetail() {
+			document.getElementById("diseaseDetailModal").classList.add("hidden");
+		}
+
+		// ------------------------------------------------------------------
+		// 事件绑定（列表使用事件委托，避免把 id 拼进 onclick）
+		// ------------------------------------------------------------------
+		function bindEvents() {
+			document.getElementById("plantList").addEventListener("click", event => {
+				const btn = event.target.closest("[data-action]");
+				if (!btn) return;
+				const id = btn.dataset.id;
+				switch (btn.dataset.action) {
+					case "expand":
+						if (state.expandCardIds.has(id)) state.expandCardIds.delete(id);
+						else state.expandCardIds.add(id);
+						renderCurrentView();
+						break;
+					case "edit":
+						editPlant(id);
+						break;
+					case "delete-user":
+						deleteUserPlant(id);
+						break;
+					case "delete-store":
+						deleteStorePlant(id);
+						break;
+					case "disease-name":
+						showDiseaseByName(btn.dataset.name);
+						break;
+				}
+			});
+			document.getElementById("diseasePicker").addEventListener("click", event => {
+				const chip = event.target.closest("[data-disease]");
+				if (chip) {
+					toggleDiseaseChip(chip.dataset.disease);
+					return;
+				}
+				const del = event.target.closest("[data-disease-remove]");
+				if (del) {
+					setSelectedDiseases(state.selectedDiseaseNames.filter(n => n !== del.dataset.diseaseRemove));
+				}
+			});
+			document.getElementById("todoList").addEventListener("change", event => {
+				const input = event.target.closest("[data-action='todo-toggle']");
+				if (!input) return;
+				toggleTodoDone(input.dataset.id);
+			});
+			document.getElementById("todoList").addEventListener("click", event => {
+				const btn = event.target.closest("[data-action='edit']");
+				if (!btn) return;
+				editPlant(btn.dataset.id);
+			});
+			document.getElementById("diseaseList").addEventListener("click", event => {
+				const btn = event.target.closest("[data-action]");
+				if (!btn) return;
+				if (btn.dataset.action === "disease-edit") editDisease(btn.dataset.id);
+				if (btn.dataset.action === "disease-delete") deleteDisease(btn.dataset.id);
+			});
+			document.getElementById("aiChatInput").addEventListener("keydown", event => {
+				if (event.key === "Enter" && !event.shiftKey) {
+					event.preventDefault();
+					sendAiChat();
+				}
+			});
+			document.addEventListener("click", closeSettings);
+			document.addEventListener("keydown", event => {
+				if (event.key !== "Escape") return;
+				if (!document.getElementById("settingsMenu").classList.contains("hidden")) {
+					closeSettings();
+				} else if (!document.getElementById("aiQuotaModal").classList.contains("hidden")) {
+					closeAiQuota();
+				} else if (!document.getElementById("aiConfigModal").classList.contains("hidden")) {
+					closeAiConfig();
+				} else if (!document.getElementById("aiChatModal").classList.contains("hidden")) {
+					closeAiChat();
+				} else if (!document.getElementById("imageSearchModal").classList.contains("hidden")) {
+					closeImageSearch();
+				} else if (!document.getElementById("diseaseDetailModal").classList.contains("hidden")) {
+					closeDiseaseDetail();
+				} else if (!document.getElementById("diseaseFormModal").classList.contains("hidden")) {
+					closeDiseaseForm();
+				} else if (!document.getElementById("diseasePage").classList.contains("hidden")) {
+					closeDiseaseLib();
+				} else if (!document.getElementById("plantModal").classList.contains("hidden")) {
+					closePlantModal();
+				}
+			});
+		}
+
+		init();
+	</script>
+	<style>
+		.line-clamp-2 {
+			display: -webkit-box;
+			-webkit-line-clamp: 2;
+			-webkit-box-orient: vertical;
+			overflow: hidden;
+		}
+	</style>
+</body>
+
+</html>

@@ -1,0 +1,12 @@
+/mount
+/cache
+__pycache__/
+*.pyc
+# 运行数据与本地配置
+/data/
+*.db
+*.db-wal
+*.db-shm
+/data/backup/
+*.log
+.pyweb.*
