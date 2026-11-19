@@ -10,3 +10,7 @@ __pycache__/
 /data/backup/
 *.log
 .pyweb.*
+
+# 虚拟环境
+.venv/
+venv/
